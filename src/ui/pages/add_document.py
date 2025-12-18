@@ -11,6 +11,7 @@ class AddDocumentPage:
     def render(self) -> None:
         st.title("📝 新增公文")
         
+        # 顯示成功訊息
         if st.session_state.get("doc_created"):
             st.toast(f"✅ 公文新增成功！文號：{st.session_state.doc_created}", icon="🎉")
             del st.session_state["doc_created"]
@@ -18,6 +19,7 @@ class AddDocumentPage:
         with st.form("add_document_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
+                # 公文類型選單
                 doc_type = st.selectbox(
                     "公文類型 *",
                     options=[
@@ -37,15 +39,16 @@ class AddDocumentPage:
             
             with col2:
                 subject = st.text_area("主旨 *", height=100)
+                # 自動帶入承辦人
                 current_user = st.session_state.get("user", {})
                 handler_default = current_user.get("display_name", "") if current_user else ""
                 handler = st.text_input("承辦人", value=handler_default)
                 notes = st.text_area("備註", height=100)
             
-            # === 新增：檔案上傳區塊 ===
+            # === ✨ 關鍵修改：這裡加入了檔案上傳元件 ===
             st.markdown("### 📎 附件上傳")
             uploaded_file = st.file_uploader("上傳公文 PDF (系統將自動加入浮水印)", type=["pdf"])
-            # ========================
+            # =======================================
 
             st.markdown("### 📎 回覆資訊 (選填)")
             col3, col4 = st.columns(2)
@@ -58,10 +61,13 @@ class AddDocumentPage:
             
             if submitted:
                 try:
+                    # 轉換 Enum
                     type_enum = next(t for t in DocumentType if t.value == doc_type)
+                    
                     user_info = st.session_state.get("user", {})
                     created_by = user_info.get("username", "system") if user_info else "system"
 
+                    # 呼叫 Service 建立公文，並傳入 uploaded_file
                     doc = self.document_service.create_document(
                         date=send_date,
                         doc_type=type_enum,
@@ -70,7 +76,7 @@ class AddDocumentPage:
                         created_by=created_by,
                         parent_id=parent_id if parent_id else None,
                         manual_id=None,
-                        file_obj=uploaded_file # 傳遞檔案
+                        file_obj=uploaded_file # ✨ 將檔案傳遞給後端
                     )
                     
                     st.session_state["doc_created"] = doc.id
