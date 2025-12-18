@@ -99,7 +99,7 @@ def main():
             HomePage(doc_repo).render()
         
         elif current_page == UIConstants.PAGE_ADD_DOCUMENT:
-            # 修正：注入 drive_repo 以支援檔案上傳
+            # ✨ 關鍵修正：同時傳入 doc_repo 和 drive_repo
             AddDocumentPage(DocumentService(doc_repo, drive_repo)).render()
         
         elif current_page == UIConstants.PAGE_SEARCH:
