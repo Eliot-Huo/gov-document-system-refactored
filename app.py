@@ -1,9 +1,8 @@
-"""政府公文追蹤系統 - 主程式 (修正版)"""
+"""政府公文追蹤系統 - 主程式 (修正版 v2.1.1)"""
 import sys
 import os
 
 # 1. 路徑防呆：確保專案根目錄在 sys.path 中
-# 這能解決 "ModuleNotFoundError: No module named 'src'" 的問題
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
@@ -98,7 +97,7 @@ def main():
         render_sidebar(auth_service)
         
         st.markdown("# 📋 政府公文追蹤系統")
-        st.caption("v2.1.0 - 修正優化版")
+        st.caption("v2.1.1 - 穩定修正版")
         st.markdown("---")
         
         current_page = st.session_state.get(
@@ -106,22 +105,29 @@ def main():
             UIConstants.PAGE_HOME
         )
         
+        # 路由邏輯修正
         if current_page == UIConstants.PAGE_HOME:
-            HomePage(doc_repo, TrackingService(doc_repo)).render()
+            # 修正處：HomePage 內部會自己初始化 TrackingService，只需要傳入 doc_repo
+            HomePage(doc_repo).render()
+            
         elif current_page == UIConstants.PAGE_ADD_DOCUMENT:
             AddDocumentPage(DocumentService(doc_repo)).render()
+            
         elif current_page == UIConstants.PAGE_SEARCH:
             SearchPage(DocumentService(doc_repo)).render()
+            
         elif current_page == UIConstants.PAGE_TRACKING:
             TrackingPage(TrackingService(doc_repo)).render()
+            
         elif current_page == UIConstants.PAGE_OCR:
             OCRPage().render()
+            
         elif current_page == UIConstants.PAGE_ADMIN:
             AdminPage(auth_service, user_repo).render()
     
     except Exception as e:
         st.error(f"❌ 系統錯誤: {str(e)}")
-        # 在開發階段可以印出詳細錯誤，正式上線建議記錄 log
+        # 在開發階段印出詳細錯誤，方便 Debug
         import traceback
         st.code(traceback.format_exc())
 
