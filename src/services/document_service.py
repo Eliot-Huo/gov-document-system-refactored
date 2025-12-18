@@ -8,16 +8,16 @@ from src.data_access.google_sheets import DocumentRepository
 from src.data_access.google_drive import DriveRepository
 from src.config.constants import DocumentType, BusinessRules
 from src.utils.exceptions import ValidationError, BusinessLogicError
-from src.utils.watermark import add_watermark # 匯入剛建立的工具
+from src.utils.watermark import add_watermark 
 
 class DocumentService:
-    
+    # ✨ 建構子加入了 drive_repository
     def __init__(self, repository: DocumentRepository, drive_repository: DriveRepository = None):
         self.repository = repository
-        self.drive_repository = drive_repository # 新增 Drive 依賴
+        self.drive_repository = drive_repository 
     
     def generate_document_id(self, date: datetime, is_reply: bool, parent_id: Optional[str] = None) -> str:
-        """生成流水號 (保持原樣)"""
+        """生成流水號"""
         if is_reply and not parent_id:
             raise ValidationError("回覆案件必須提供父公文 ID")
         
@@ -44,7 +44,7 @@ class DocumentService:
         created_by: str,
         parent_id: Optional[str] = None,
         manual_id: Optional[str] = None,
-        file_obj: Optional[Any] = None, # 新增檔案參數
+        file_obj: Optional[Any] = None, # ✨ 接收檔案物件
         **kwargs
     ) -> Document:
         
@@ -83,7 +83,6 @@ class DocumentService:
                 )
             except Exception as e:
                 print(f"檔案處理警告: {str(e)}")
-                # 即使檔案上傳失敗，我們可能還是希望建立資料紀錄
         
         # 3. 建立 Document 物件
         document = Document(
