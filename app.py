@@ -1,4 +1,4 @@
-"""政府公文追蹤系統 - 主程式 (修正版 v2.1.1)"""
+"""政府公文追蹤系統 - 主程式 (修正版 v2.1.2)"""
 import sys
 import os
 
@@ -97,7 +97,7 @@ def main():
         render_sidebar(auth_service)
         
         st.markdown("# 📋 政府公文追蹤系統")
-        st.caption("v2.1.1 - 穩定修正版")
+        st.caption("v2.1.2 - Fix HomePage Init Error")
         st.markdown("---")
         
         current_page = st.session_state.get(
@@ -105,9 +105,10 @@ def main():
             UIConstants.PAGE_HOME
         )
         
-        # 路由邏輯修正
+        # 路由邏輯修正區塊
         if current_page == UIConstants.PAGE_HOME:
-            # 修正處：HomePage 內部會自己初始化 TrackingService，只需要傳入 doc_repo
+            # 【重要修正】這裡只傳入 doc_repo，移除 tracking_service 參數
+            # [cite_start]根據 src/ui/pages/home.py [cite: 231-232]，__init__ 只接受 repository
             HomePage(doc_repo).render()
             
         elif current_page == UIConstants.PAGE_ADD_DOCUMENT:
@@ -127,7 +128,6 @@ def main():
     
     except Exception as e:
         st.error(f"❌ 系統錯誤: {str(e)}")
-        # 在開發階段印出詳細錯誤，方便 Debug
         import traceback
         st.code(traceback.format_exc())
 
