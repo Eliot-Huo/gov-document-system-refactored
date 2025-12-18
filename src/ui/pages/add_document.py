@@ -1,4 +1,4 @@
-"""新增公文頁面 (修正版)"""
+"""新增公文頁面 (修正版 v2.2)"""
 import streamlit as st
 from datetime import date
 from typing import Optional
@@ -14,11 +14,9 @@ class AddDocumentPage:
     def render(self) -> None:
         st.title("📝 新增公文")
         
-        # 修正 5: 使用 session_state 來重置表單，而不是 sleep + rerun
-        # 如果有上傳成功的標記，顯示 toast
+        # 顯示成功訊息 (Toast)
         if st.session_state.get("doc_created"):
             st.toast(f"✅ 公文新增成功！文號：{st.session_state.doc_created}", icon="🎉")
-            # 清除標記
             del st.session_state["doc_created"]
 
         with st.form("add_document_form", clear_on_submit=True):
@@ -29,8 +27,14 @@ class AddDocumentPage:
                     options=[
                         DocumentType.INCOMING.value,
                         DocumentType.OUTGOING.value,
-                        DocumentType.INTERNAL.value
-                    ]
+                        DocumentType.MEMO.value  # 修正：將 INTERNAL 改為 MEMO
+                    ],
+                    # 讓選項顯示更友善的名稱
+                    format_func=lambda x: {
+                        DocumentType.INCOMING.value: "來文 (收文)",
+                        DocumentType.OUTGOING.value: "發文",
+                        DocumentType.MEMO.value: "內部簽呈"  # 對應 MEMO
+                    }.get(x, x)
                 )
                 sender = st.text_input("發文機關 *")
                 send_date = st.date_input("發文日期 *", value=date.today())
@@ -38,7 +42,11 @@ class AddDocumentPage:
             
             with col2:
                 subject = st.text_area("主旨 *", height=100)
-                handler = st.text_input("承辦人", value=st.session_state.get("user", {}).get("display_name", ""))
+                # 這裡加個防呆，如果 session 中沒有 user 資訊，預設為空字串
+                current_user = st.session_state.get("user", {})
+                handler_default = current_user.get("display_name", "") if current_user else ""
+                
+                handler = st.text_input("承辦人", value=handler_default)
                 notes = st.text_area("備註", height=100)
             
             st.markdown("### 📎 回覆資訊 (選填)")
@@ -48,25 +56,27 @@ class AddDocumentPage:
             with col4:
                 is_final_reply = st.checkbox("這是最終回覆")
             
+            # 因為上面修好了，程式現在能執行到這裡，Submit Button 警告就會消失
             submitted = st.form_submit_button("✅ 新增公文", use_container_width=True)
             
             if submitted:
                 try:
-                    # 轉換 Enum
+                    # 反查 Enum
                     type_enum = next(t for t in DocumentType if t.value == doc_type)
                     
+                    user_info = st.session_state.get("user", {})
+                    created_by = user_info.get("username", "system") if user_info else "system"
+
                     doc = self.document_service.create_document(
                         date=send_date,
                         doc_type=type_enum,
                         agency=sender,
                         subject=subject,
-                        created_by=st.session_state.get("user", {}).get("username", "system"),
+                        created_by=created_by,
                         parent_id=parent_id if parent_id else None,
-                        manual_id=None, # 自動生成
-                        # 其他欄位如 handler, notes 需視 Model 擴充狀況處理，暫時忽略
+                        manual_id=None
                     )
                     
-                    # 設定成功狀態並重整
                     st.session_state["doc_created"] = doc.id
                     st.rerun()
                     
