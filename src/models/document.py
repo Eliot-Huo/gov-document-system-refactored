@@ -1,33 +1,13 @@
-"""公文資料模型
-
-此模組定義公文的領域模型 (Domain Model)，
-提供型別安全的資料結構和轉換方法。
-"""
+"""公文資料模型 (修正版)"""
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 
 from src.config.constants import DocumentType, OCRStatus, FieldNames
 
-
 @dataclass
 class Document:
-    """公文資料模型
-    
-    Attributes:
-        id: 公文字號
-        date: 公文日期
-        type: 公文類型
-        agency: 機關單位
-        subject: 主旨
-        parent_id: 父公文 ID (回覆案件才有)
-        drive_file_id: Google Drive 檔案 ID
-        created_at: 建立時間
-        created_by: 建立者
-        ocr_status: OCR 狀態
-        ocr_text: OCR 辨識文字
-        ocr_date: OCR 完成時間
-    """
+    """公文資料模型"""
     id: str
     date: datetime
     type: DocumentType
@@ -41,43 +21,50 @@ class Document:
     ocr_text: Optional[str] = None
     ocr_date: Optional[datetime] = None
     
+    @staticmethod
+    def _parse_smart_date(date_val: Any) -> datetime:
+        """修正 3: 強健的日期解析"""
+        if not date_val:
+            return datetime.now()
+        
+        if isinstance(date_val, datetime):
+            return date_val
+            
+        if isinstance(date_val, str):
+            # 嘗試多種常見格式
+            formats = ['%Y-%m-%d', '%Y/%m/%d', '%Y%m%d', '%d-%b-%Y']
+            for fmt in formats:
+                try:
+                    return datetime.strptime(date_val, fmt)
+                except ValueError:
+                    continue
+        
+        # 兜底：如果真的解析不了，回傳現在，避免 crash，但印出警告
+        print(f"Warning: 無法解析日期 '{date_val}'，使用當前時間。")
+        return datetime.now()
+
     @classmethod
     def from_sheet_row(cls, row: Dict[str, Any]) -> 'Document':
-        """從 Google Sheets 列資料建立 Document 物件
-        
-        Args:
-            row: Sheet 列資料 (dict 格式)
-            
-        Returns:
-            Document 物件
-            
-        Raises:
-            ValueError: 當資料格式不正確時
-        """
         try:
             return cls(
-                id=row[FieldNames.ID],
-                date=datetime.strptime(row[FieldNames.DATE], '%Y-%m-%d'),
-                type=DocumentType(row[FieldNames.TYPE]),
-                agency=row[FieldNames.AGENCY],
-                subject=row[FieldNames.SUBJECT],
-                parent_id=row.get(FieldNames.PARENT_ID) or None,
-                drive_file_id=row.get(FieldNames.DRIVE_FILE_ID) or None,
-                created_at=cls._parse_datetime(row.get(FieldNames.CREATED_AT)),
-                created_by=row.get(FieldNames.CREATED_BY),
+                id=str(row.get(FieldNames.ID, '')),
+                # 使用修正後的日期解析
+                date=cls._parse_smart_date(row.get(FieldNames.DATE)),
+                type=DocumentType(row.get(FieldNames.TYPE, '收文')), # 預設值
+                agency=str(row.get(FieldNames.AGENCY, '')),
+                subject=str(row.get(FieldNames.SUBJECT, '')),
+                parent_id=str(row.get(FieldNames.PARENT_ID, '')) or None,
+                drive_file_id=str(row.get(FieldNames.DRIVE_FILE_ID, '')) or None,
+                created_at=cls._parse_datetime(str(row.get(FieldNames.CREATED_AT, ''))),
+                created_by=str(row.get(FieldNames.CREATED_BY, '')),
                 ocr_status=OCRStatus(row.get(FieldNames.OCR_STATUS, 'pending')),
-                ocr_text=row.get(FieldNames.OCR_TEXT),
-                ocr_date=cls._parse_datetime(row.get(FieldNames.OCR_DATE))
+                ocr_text=str(row.get(FieldNames.OCR_TEXT, '')),
+                ocr_date=cls._parse_datetime(str(row.get(FieldNames.OCR_DATE, '')))
             )
-        except (KeyError, ValueError) as e:
-            raise ValueError(f"無法解析 Sheet 資料: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"解析 Document 失敗: {str(e)}, Row: {row}")
     
     def to_sheet_row(self) -> Dict[str, str]:
-        """轉換為 Google Sheets 列資料
-        
-        Returns:
-            dict 格式的列資料
-        """
         return {
             FieldNames.ID: self.id,
             FieldNames.DATE: self.date.strftime('%Y-%m-%d'),
@@ -94,38 +81,13 @@ class Document:
         }
     
     @staticmethod
-    def _parse_datetime(date_str: Optional[str]) -> Optional[datetime]:
-        """解析日期時間字串
-        
-        Args:
-            date_str: ISO 格式的日期時間字串
-            
-        Returns:
-            datetime 物件，如果輸入為空則回傳 None
-        """
-        if not date_str:
-            return None
-        try:
-            return datetime.fromisoformat(date_str)
-        except (ValueError, AttributeError):
-            return None
+    def _parse_datetime(date_str: str) -> Optional[datetime]:
+        if not date_str: return None
+        try: return datetime.fromisoformat(date_str)
+        except: return None
     
     def is_reply(self) -> bool:
-        """判斷是否為回覆案件
-        
-        Returns:
-            True 如果有 parent_id，否則 False
-        """
         return self.parent_id is not None
-    
-    def is_outgoing(self) -> bool:
-        """判斷是否為我方發文
         
-        Returns:
-            True 如果是發文或函，否則 False
-        """
+    def is_outgoing(self) -> bool:
         return self.type in [DocumentType.OUTGOING, DocumentType.LETTER]
-    
-    def __repr__(self) -> str:
-        """字串表示"""
-        return f"Document(id='{self.id}', type={self.type.value}, agency='{self.agency}')"
