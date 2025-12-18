@@ -1,52 +1,40 @@
-"""公文業務邏輯服務 (修正版)"""
-from datetime import datetime, timedelta
-from typing import List, Optional, Tuple
+"""公文業務邏輯服務 (功能補完版)"""
+from datetime import datetime
+from typing import Optional, List, Any
+import io
 
 from src.models.document import Document
 from src.data_access.google_sheets import DocumentRepository
+from src.data_access.google_drive import DriveRepository
 from src.config.constants import DocumentType, BusinessRules
 from src.utils.exceptions import ValidationError, BusinessLogicError
+from src.utils.watermark import add_watermark # 匯入剛建立的工具
 
 class DocumentService:
     
-    def __init__(self, repository: DocumentRepository):
+    def __init__(self, repository: DocumentRepository, drive_repository: DriveRepository = None):
         self.repository = repository
+        self.drive_repository = drive_repository # 新增 Drive 依賴
     
-    def generate_document_id(
-        self,
-        date: datetime,
-        is_reply: bool,
-        parent_id: Optional[str] = None
-    ) -> str:
-        """修正 4: 效能優化版流水號生成"""
+    def generate_document_id(self, date: datetime, is_reply: bool, parent_id: Optional[str] = None) -> str:
+        """生成流水號 (保持原樣)"""
         if is_reply and not parent_id:
             raise ValidationError("回覆案件必須提供父公文 ID")
         
-        # 使用新方法只抓取所有 ID，不抓取完整資料，速度快很多
         all_ids = self.repository.get_all_ids()
         
         if is_reply:
-            # 格式: 金展回{序號}{父公文ID}
             prefix = BusinessRules.ID_PREFIX_REPLY
-            # 計算目前這個父公文已有多少回覆
-            # 這裡稍微複雜，因為 ID 包含 ParentID，我們需要過濾
-            # 但因為回覆量通常不大，這裡用字串比對尚可
-            relevant_ids = [
-                eid for eid in all_ids 
-                if eid.startswith(prefix) and parent_id in eid
-            ]
+            relevant_ids = [eid for eid in all_ids if eid.startswith(prefix) and parent_id in eid]
             sequence = len(relevant_ids) + 1
             return f"{prefix}{sequence:02d}{parent_id}"
         else:
-            # 格式: 金展詢{日期}{序號}
             date_str = date.strftime('%Y%m%d')
             prefix = f"{BusinessRules.ID_PREFIX_GENERAL}{date_str}"
-            
-            # 直接計算前綴符合的數量
             count = len([eid for eid in all_ids if eid.startswith(prefix)])
             sequence = count + 1
             return f"{prefix}{sequence:03d}"
-    
+
     def create_document(
         self,
         date: datetime,
@@ -55,15 +43,15 @@ class DocumentService:
         subject: str,
         created_by: str,
         parent_id: Optional[str] = None,
-        drive_file_id: Optional[str] = None,
         manual_id: Optional[str] = None,
-        **kwargs  # 處理可能的額外參數
+        file_obj: Optional[Any] = None, # 新增檔案參數
+        **kwargs
     ) -> Document:
         
         if not agency or not subject:
             raise ValidationError("機關單位和主旨為必填欄位")
         
-        # 產生 ID
+        # 1. 產生 ID
         if manual_id:
             existing = self.repository.get_by_id(manual_id)
             if existing:
@@ -71,9 +59,33 @@ class DocumentService:
             doc_id = manual_id
         else:
             is_reply = parent_id is not None
-            # 這裡會呼叫優化後的 ID 生成邏輯
             doc_id = self.generate_document_id(date, is_reply, parent_id)
+            
+        drive_file_id = None
         
+        # 2. 處理檔案 (如果有上傳)
+        if file_obj and self.drive_repository:
+            try:
+                # 讀取檔案內容
+                file_bytes = file_obj.getvalue()
+                
+                # 判斷是否為 PDF 並加浮水印
+                if file_obj.name.lower().endswith('.pdf'):
+                    watermark_text = f"{doc_id} - {created_by}"
+                    file_bytes = add_watermark(file_bytes, watermark_text)
+                
+                # 上傳到 Google Drive
+                filename = f"{doc_id}_{file_obj.name}"
+                drive_file_id = self.drive_repository.upload_file(
+                    file_bytes=file_bytes,
+                    filename=filename,
+                    mime_type=file_obj.type
+                )
+            except Exception as e:
+                print(f"檔案處理警告: {str(e)}")
+                # 即使檔案上傳失敗，我們可能還是希望建立資料紀錄，或者您可以選擇在這裡 raise Exception
+        
+        # 3. 建立 Document 物件
         document = Document(
             id=doc_id,
             date=date,
@@ -81,18 +93,16 @@ class DocumentService:
             agency=agency,
             subject=subject,
             parent_id=parent_id,
-            drive_file_id=drive_file_id,
+            drive_file_id=drive_file_id, # 寫入 Drive ID
             created_at=datetime.now(),
-            created_by=created_by,
-            # 處理額外欄位如 handler, notes (如果 Model 支援的話)
+            created_by=created_by
         )
         
+        # 4. 寫入資料庫
         if not self.repository.create(document):
             raise BusinessLogicError("儲存公文失敗")
             
         return document
 
-    # ... (search_documents, get_conversation_thread 等其他方法保持不變)
     def search_documents(self, keyword=None, **kwargs):
-        # 簡單實作搜尋轉發
         return self.repository.find_by_criteria(**kwargs)
