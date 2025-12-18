@@ -83,7 +83,7 @@ class DocumentService:
                 )
             except Exception as e:
                 print(f"檔案處理警告: {str(e)}")
-                # 即使檔案上傳失敗，我們可能還是希望建立資料紀錄，或者您可以選擇在這裡 raise Exception
+                # 即使檔案上傳失敗，我們可能還是希望建立資料紀錄
         
         # 3. 建立 Document 物件
         document = Document(
